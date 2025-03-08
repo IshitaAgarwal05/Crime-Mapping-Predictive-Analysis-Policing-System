@@ -1,20 +1,11 @@
 import flet as ft
 import webbrowser
-import pandas as pd
 from flet import Tabs, Tab, Image, Column, Text, ElevatedButton, Row, Container, TextField
+from auth import validate_login  # Import from auth.py
+from rate_limiter import is_rate_limited  # Import rate limiter
+from performance_model import performance_model_tab 
 
-
-# Function to validate user login
-def validate_login(username, password):
-    try:
-        credentials = pd.read_csv("credentials.csv")  # Load CSV file
-        for _, row in credentials.iterrows():
-            if row["user_id"] == username and row["pwd"] == password:
-                return True  # Login successful
-    except Exception as e:
-        print("Error reading CSV:", e)
-    return False  # Login failed
-
+performance_tab = performance_model_tab()
 
 # Main function
 def main(page: ft.Page):
@@ -26,10 +17,9 @@ def main(page: ft.Page):
     def show_dashboard():
         page.clean()  # Clear the login page
         page.title = "Police Patrol Optimization Dashboard"
-
-        image_folder = "images/"
-
+    
         # Load images
+        image_folder = "images/"
         stats_images = [
             image_folder + "Assault_crimes_in_Toronto.png",
             image_folder + "Crime_Indicator.png",
@@ -84,10 +74,10 @@ def main(page: ft.Page):
             tabs=[
                 Tab(text="Statistics", content=stats_tab),
                 Tab(text="Predictive Map", content=predictive_map_tab),
-                Tab(text="Patrol Route", content=patrol_route_tab)
+                Tab(text="Patrol Route", content=patrol_route_tab),
+                Tab(text="Performance Model", content=performance_tab)  # New tab added
             ],
         )
-
         page.add(tabs)
 
     # Login Page UI
@@ -98,6 +88,14 @@ def main(page: ft.Page):
     def handle_login(e):
         username = username_field.value.strip()
         password = password_field.value.strip()
+
+        # Check if user is rate-limited
+        if is_rate_limited(username):
+            error_text.value = "Too many attempts! Try again later."
+            page.update()
+            
+            return
+
         if validate_login(username, password):
             show_dashboard()  # Load dashboard on successful login
         else:
