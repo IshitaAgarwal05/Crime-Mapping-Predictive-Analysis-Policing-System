@@ -3,7 +3,7 @@ import folium
 from folium.plugins import MarkerCluster
 
 # Load crime data (Ensure 'Lat', 'Long', and 'offence' columns exist)
-data = pd.read_csv("MCI_2014_to_2019.csv")
+data = pd.read_csv("./data/MCI_2014_to_2019.csv")
 
 # Group by location and count crimes
 crime_counts = data.groupby(["Lat", "Long"]).size().reset_index(name="crime_count")
@@ -40,5 +40,5 @@ for _, row in crime_counts.iterrows():
     ).add_to(marker_cluster)
 
 # Save and display the map
-crime_map.save("crime_map-2.html")
-print("Crime map generated! Open 'crime_map-2.html' in your browser.")
+crime_map.save("crime_map.html")
+print("Crime map generated! Open 'crime_map.html' in your browser.")
