@@ -3,7 +3,7 @@ from flet import Tabs, Tab, Image, Column, Text
 
 
 def main(page: ft.Page):
-    page.title = "Police Patrol Optimization Dashboard"
+    page.title = "Crime Mapping & Predictive Policing System"
     page.scroll = True
 
     # Load saved images
@@ -42,7 +42,4 @@ def main(page: ft.Page):
 
     page.add(tabs)
 
-
 ft.app(target=main)
-
-# Let me know if you want me to refine anything or add more interactivity! 🚀
