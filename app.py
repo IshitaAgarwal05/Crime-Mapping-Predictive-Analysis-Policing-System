@@ -1,5 +1,6 @@
 import flet as ft
-from flet import Tabs, Tab, Image, Column, Text
+import webbrowser
+from flet import Tabs, Tab, Image, Column, Text, ElevatedButton
 
 
 def main(page: ft.Page):
@@ -13,6 +14,10 @@ def main(page: ft.Page):
         "time_series_trend.png",
     ]
 
+    # Function to open the crime map
+    def open_crime_map(e):
+        webbrowser.open("crime_map.html")
+
     # Statistics tab
     stats_tab = Column([
         Text("Incident Statistics & Visualizations", size=20, weight="bold")
@@ -21,7 +26,8 @@ def main(page: ft.Page):
     # Predictive Map tab
     predictive_map_tab = Column([
         Text("Predictive Crime Hotspots", size=20, weight="bold"),
-        Image(src="cluster_density_map.png", width=800)
+        Image(src="cluster_density_map.png", width=800),
+        ElevatedButton("Show Crime Map", on_click=open_crime_map)
     ])
 
     # Patrol Route tab
@@ -44,5 +50,3 @@ def main(page: ft.Page):
 
 
 ft.app(target=main)
-
-# Let me know if you want me to refine anything or add more interactivity! 🚀
