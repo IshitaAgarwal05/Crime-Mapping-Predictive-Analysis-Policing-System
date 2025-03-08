@@ -74,4 +74,4 @@ c. Click "Calculate Route" to generate the optimized patrol route.
 - View Crime Map: <br>
 a. Click "Show Crime Map" to view crime hotspots.
 
-[**Demo Link:**](https://youtu.be/e9ExeNsG3Kc)
+[**Demo Link**](https://youtu.be/e9ExeNsG3Kc)
