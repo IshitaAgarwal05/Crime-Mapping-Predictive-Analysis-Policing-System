@@ -5,6 +5,7 @@ import requests
 from geopy.distance import great_circle
 from flet import Tabs, Tab, Image, Column, Text, ElevatedButton, Row, Container, TextField, AlertDialog
 import heapq
+import atexit
 import folium
 from folium.plugins import MarkerCluster
 from math import radians, sin, cos, sqrt, atan2
@@ -197,12 +198,17 @@ def main(page: ft.Page):
         start_time = TextField(label="Patrol Start Time (YYYY-MM-DD HH:MM:SS)")
         end_time = TextField(label="Patrol End Time (YYYY-MM-DD HH:MM:SS)")
         optimized_route_output = Text()
-        show_map_button = ElevatedButton("Show Optimized Route on Map", on_click=lambda e: webbrowser.open("optimized_patrol_route.html"), visible=False)
+        
+        show_map_button = ft.Ref[ft.ElevatedButton]() 
+        show_map_button.current = ft.ElevatedButton(
+            text="Show Optimized Route on Map",
+            on_click=lambda e: webbrowser.open("optimized_patrol_route.html"),
+            visible=False
+        )
 
         def calculate_route(e):
-            global optimized_route  # Use the global variable
+            global optimized_route  
             try:
-                # Generate the optimized patrol route map
                 generate_patrol_route_map(
                     float(police_station_lat.value),
                     float(police_station_long.value),
@@ -210,11 +216,11 @@ def main(page: ft.Page):
                     end_time.value
                 )
                 optimized_route_output.value = "Optimized route map generated! Click 'Show Optimized Route on Map' to view."
-                show_map_button.visible = True  # Make the button visible
+                show_map_button.current.visible = True
             except Exception as ex:
                 optimized_route_output.value = f"Error: {str(ex)}"
-                show_map_button.visible = False  # Keep the button hidden in case of error
-            page.update()  # Update the page to reflect changes
+                show_map_button.current.visible = False 
+            page.update() 
 
         patrol_route_tab = Column([
             Text("Optimized Patrol Route", size=22, weight="bold"),
@@ -224,7 +230,7 @@ def main(page: ft.Page):
             end_time,
             ElevatedButton("Calculate Route", on_click=calculate_route),
             optimized_route_output,
-            show_map_button
+            show_map_button.current
         ], spacing=20)
 
         # Tabs
@@ -278,6 +284,7 @@ def main(page: ft.Page):
     )
 
     page.add(login_page)
+    atexit.register(lambda: page.window_close())
 
 # Run the app
 ft.app(target=main)
