@@ -8,13 +8,21 @@ import heapq
 import folium
 from folium.plugins import MarkerCluster
 from math import radians, sin, cos, sqrt, atan2
+from auth import validate_login
+from rate_limiter import is_rate_limited
+from performance_model import performance_model_tab 
+
+performance_tab = performance_model_tab()
 
 # Load crime data
-crime_data = pd.read_csv("data/processed_data.csv")
-junctions_data = pd.read_csv("data/junctions.csv")
+crime_data = pd.read_csv("data/processed_data.csv") 
+junctions_data = pd.read_csv("data/junctions.csv")  
 
 # Google Maps API key
 API_KEY = "AIzaSyDIvbFbGFjCZDclBFL4GGyk0pVRHXoWyFI"
+
+# Global variable to store optimized route
+optimized_route = []
 
 # Function to fetch roads data using Google Maps API
 def fetch_roads_data(lat, long, radius=5000):
@@ -79,14 +87,10 @@ def create_graph(junctions):
                 graph[(row["Lat"], row["Long"])].append((neighbor["Lat"], neighbor["Long"]))
     return graph
 
-# Function to generate Google Maps URL for the optimized route
-def generate_google_maps_url(route):
-    base_url = "https://www.google.com/maps/dir/"
-    waypoints = "/".join([f"{point[0]},{point[1]}" for point in route])
-    return base_url + waypoints
-
 # Function to generate the optimized patrol route map
 def generate_patrol_route_map(police_station_lat, police_station_long, start_time, end_time):
+    global optimized_route  # Use the global variable
+
     # Filter crime data for the given time duration
     filtered_crimes = crime_data[
         (crime_data["occurrencedate"] >= start_time) & (crime_data["occurrencedate"] <= end_time)
@@ -133,101 +137,147 @@ def generate_patrol_route_map(police_station_lat, police_station_long, start_tim
 
 # Main app
 def main(page: ft.Page):
-    page.title = "Police Patrol Optimization Dashboard"
+    page.title = "Login - Police Patrol Optimization"
     page.padding = 30  # Padding around the page
     page.scroll = True
 
-    image_folder = "images/"
+    def show_dashboard():
+        page.clean()  # Clear the login page
+        page.title = "Police Patrol Optimization Dashboard"
 
-    # Load saved images
-    stats_images = [
-        image_folder + "Assault_crimes_in_Toronto.png",
-        image_folder + "Crime_Indicator.png",
-        image_folder + "Crime_Types_by_Hour_of_Day_in_Toronto.png",
-        image_folder + "Elbow_Method_For_Optimal_k_2015.png",
-        image_folder + "Major_Crime_Indicators_by_Month.png",
-        image_folder + "Number_of_Major_Crimes_Reported_in_Toronto_in_2015.png",
-    ]
+        image_folder = "images/"
 
-    # Function to open the crime map
-    def open_crime_map(e):
-        webbrowser.open("crime_map_1.html")
+        # Load saved images
+        stats_images = [
+            image_folder + "Assault_crimes_in_Toronto.png",
+            image_folder + "Crime_Indicator.png",
+            image_folder + "Crime_Types_by_Hour_of_Day_in_Toronto.png",
+            image_folder + "Elbow_Method_For_Optimal_k_2015.png",
+            image_folder + "Major_Crime_Indicators_by_Month.png",
+            image_folder + "Number_of_Major_Crimes_Reported_in_Toronto_in_2015.png",
+        ]
 
-    # Arrange images in a 3-column grid without cropping
-    stats_grid = []
-    row_images = []
+        # Function to open the crime map
+        def open_crime_map(e):
+            webbrowser.open("crime_map.html")
 
-    for i, img in enumerate(stats_images):
-        row_images.append(
-            Container(
-                content=Image(src=img, width=350, height=280, fit="contain"), 
-                bgcolor="white",
-                padding=10,
-                border_radius=10, 
+        # Arrange images in a 3-column grid without cropping
+        stats_grid = []
+        row_images = []
+
+        for i, img in enumerate(stats_images):
+            row_images.append(
+                Container(
+                    content=Image(src=img, width=350, height=280, fit="contain"),  # Wrapped Image inside Container
+                    bgcolor="white",  # Background color for visibility
+                    padding=10,  # Spacing inside the container
+                    border_radius=10,  # Rounded corners for a cleaner look
+                )
             )
+
+            if (i + 1) % 3 == 0 or i == len(stats_images) - 1:
+                stats_grid.append(Row(row_images, alignment="center", spacing=15))  # Space between images
+                row_images = []
+
+        # Statistics tab with grid layout
+        stats_tab = Column([
+            Text("Incident Statistics & Visualizations", size=22, weight="bold"),
+            *stats_grid  # Unpacking rows into the column
+        ], spacing=20)
+
+        # Predictive Map tab
+        predictive_map_tab = Column([
+            Text("Predictive Crime Hotspots", size=22, weight="bold"),
+            ElevatedButton("Show Crime Map", on_click=open_crime_map)
+        ], spacing=20)
+
+        # Patrol Route tab
+        police_station_lat = TextField(label="Police Station Latitude")
+        police_station_long = TextField(label="Police Station Longitude")
+        start_time = TextField(label="Patrol Start Time (YYYY-MM-DD HH:MM:SS)")
+        end_time = TextField(label="Patrol End Time (YYYY-MM-DD HH:MM:SS)")
+        optimized_route_output = Text()
+        show_map_button = ElevatedButton("Show Optimized Route on Map", on_click=lambda e: webbrowser.open("optimized_patrol_route.html"), visible=False)
+
+        def calculate_route(e):
+            global optimized_route  # Use the global variable
+            try:
+                # Generate the optimized patrol route map
+                generate_patrol_route_map(
+                    float(police_station_lat.value),
+                    float(police_station_long.value),
+                    start_time.value,
+                    end_time.value
+                )
+                optimized_route_output.value = "Optimized route map generated! Click 'Show Optimized Route on Map' to view."
+                show_map_button.visible = True  # Make the button visible
+            except Exception as ex:
+                optimized_route_output.value = f"Error: {str(ex)}"
+                show_map_button.visible = False  # Keep the button hidden in case of error
+            page.update()  # Update the page to reflect changes
+
+        patrol_route_tab = Column([
+            Text("Optimized Patrol Route", size=22, weight="bold"),
+            police_station_lat,
+            police_station_long,
+            start_time,
+            end_time,
+            ElevatedButton("Calculate Route", on_click=calculate_route),
+            optimized_route_output,
+            show_map_button
+        ], spacing=20)
+
+        # Tabs
+        tabs = Tabs(
+            selected_index=0,
+            tabs=[
+                Tab(text="Statistics", content=stats_tab),
+                Tab(text="Predictive Map", content=predictive_map_tab),
+                Tab(text="Patrol Route", content=patrol_route_tab),
+                Tab(text="Performance Model", content=performance_tab) 
+            ],
         )
 
-        if (i + 1) % 3 == 0 or i == len(stats_images) - 1:
-            stats_grid.append(Row(row_images, alignment="center", spacing=15)) 
-            row_images = []
+        page.add(tabs)
 
-    # Statistics tab with grid layout
-    stats_tab = Column([
-        Text("Incident Statistics & Visualizations", size=22, weight="bold"),
-        *stats_grid
-    ], spacing=20)
+    # Login Page UI
+    username_field = TextField(label="Username", width=300)
+    password_field = TextField(label="Password", width=300, password=True, can_reveal_password=True)
+    error_text = Text("", color="red")
 
-    # Predictive Map tab
-    predictive_map_tab = Column([
-        Text("Predictive Crime Hotspots", size=22, weight="bold"),
-        ElevatedButton("Show Crime Map", on_click=open_crime_map)
-    ], spacing=20)
+    def handle_login(e):
+        username = username_field.value.strip()
+        password = password_field.value.strip()
 
-    # Patrol Route tab
-    police_station_lat = TextField(label="Police Station Latitude")
-    police_station_long = TextField(label="Police Station Longitude")
-    start_time = TextField(label="Patrol Start Time (YYYY-MM-DD HH:MM:SS)")
-    end_time = TextField(label="Patrol End Time (YYYY-MM-DD HH:MM:SS)")
-    optimized_route_output = Text()
-    show_map_button = ElevatedButton("Show Optimized Route on Map", on_click=lambda e: webbrowser.open(generate_google_maps_url(optimized_route)))
+        # Check if user is rate-limited
+        if is_rate_limited(username):
+            error_text.value = "Too many attempts! Try again later."
+            page.update()
+            
+            return
 
-    def calculate_route(e):
-        try:
-            generate_patrol_route_map(
-                float(police_station_lat.value),
-                float(police_station_long.value),
-                start_time.value,
-                end_time.value
-            )
-            optimized_route_output.value = "Optimized route map generated! Click 'Show Optimized Route on Map' to view."
-            show_map_button.visible = True
-        except Exception as ex:
-            optimized_route_output.value = f"Error: {str(ex)}"
-            show_map_button.visible = False
-        page.update()
+        if validate_login(username, password):
+            show_dashboard()  # Load dashboard on successful login
+        else:
+            error_text.value = "Invalid username or password!"
+            page.update()
 
-    patrol_route_tab = Column([
-        Text("Optimized Patrol Route", size=22, weight="bold"),
-        police_station_lat,
-        police_station_long,
-        start_time,
-        end_time,
-        ElevatedButton("Calculate Route", on_click=calculate_route),
-        optimized_route_output,
-        show_map_button
-    ], spacing=20)
+    login_button = ElevatedButton("Login", on_click=handle_login)
 
-    # Tabs
-    tabs = Tabs(
-        selected_index=0,
-        tabs=[
-            Tab(text="Statistics", content=stats_tab),
-            Tab(text="Predictive Map", content=predictive_map_tab),
-            Tab(text="Patrol Route", content=patrol_route_tab)
-        ],
+    # Center the login form
+    login_page = Container(
+        content=Column([
+            Text("Police Patrol Optimization System", size=24, weight="bold"),
+            username_field,
+            password_field,
+            login_button,
+            error_text
+        ], alignment="center", spacing=20, horizontal_alignment="center"),
+        alignment=ft.alignment.center,
+        expand=True  # Ensures full visibility
     )
 
-    page.add(tabs)
-    
+    page.add(login_page)
+
 # Run the app
 ft.app(target=main)
