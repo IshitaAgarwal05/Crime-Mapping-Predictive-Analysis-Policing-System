@@ -75,3 +75,11 @@ c. Click "Calculate Route" to generate the optimized patrol route.
 a. Click "Show Crime Map" to view crime hotspots.
 
 [**Demo Link**](https://youtu.be/e9ExeNsG3Kc)
+
+
+![**Logo**](assets/crime_logo.jpeg)
+![Login Window](assets/log.jpeg)
+![Statistics](assets/stat.jpeg)
+![Predictive Map](assets/pred.jpeg)
+![Patrol Route Map](assets/patrol.jpeg)
+![Performance Model](assets/perfo.jpeg)
