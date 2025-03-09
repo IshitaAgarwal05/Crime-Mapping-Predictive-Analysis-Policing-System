@@ -3,11 +3,11 @@ import flet as ft
 # Function to create the performance model tab
 def performance_model_tab():
     performance_data = {
-        "Random Forest": {"Accuracy": 0.89, "Precision": 0.91, "Recall": 0.87},
-        "ARIMA": {"Accuracy": 0.85, "Precision": 0.86, "Recall": 0.84},
-        "SARIMA": {"Accuracy": 0.83, "Precision": 0.85, "Recall": 0.82},
         "LSTM": {"Accuracy": 0.92, "Precision": 0.93, "Recall": 0.91},
         "GRU": {"Accuracy": 0.90, "Precision": 0.92, "Recall": 0.88},
+        "Random Forest (n=100)": {"Accuracy": 0.89, "Precision": 0.91, "Recall": 0.87},
+        "ARIMA": {"Accuracy": 0.85, "Precision": 0.86, "Recall": 0.84},
+        "SARIMA": {"Accuracy": 0.83, "Precision": 0.85, "Recall": 0.82},
     }
 
     results_table = ft.DataTable(columns=[
