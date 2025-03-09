@@ -51,91 +51,186 @@ def haversine(lat1, lon1, lat2, lon2):
 # A* Algorithm to find the shortest path
 def a_star(start, goal, graph):
     open_set = []
-    heapq.heappush(open_set, (0, start))
+    heapq.heappush(open_set, (0, start))  # Priority queue with (f_score, node)
     came_from = {}
-    g_score = {node: float('inf') for node in graph}
-    g_score[start] = 0
-    f_score = {node: float('inf') for node in graph}
-    f_score[start] = haversine(start[0], start[1], goal[0], goal[1])
+    g_score = {start: 0}  # Cost from start to current node
+    f_score = {start: haversine(start[0], start[1], goal[0], goal[1])}  # Estimated total cost
 
     while open_set:
-        _, current = heapq.heappop(open_set)
+        current_f, current = heapq.heappop(open_set)
+
         if current == goal:
+            # Reconstruct the path
             path = []
             while current in came_from:
                 path.append(current)
                 current = came_from[current]
             path.append(start)
-            return path[::-1]
+            return path[::-1]  # Return reversed path
+
+        # Explore neighbors
+        if current not in graph:
+            continue  # Skip if current node isn't in the graph
 
         for neighbor in graph[current]:
-            tentative_g_score = g_score[current] + haversine(current[0], current[1], neighbor[0], neighbor[1])
-            if tentative_g_score < g_score[neighbor]:
+            # Calculate tentative g_score
+            tentative_g_score = g_score.get(current, float('inf')) + haversine(current[0], current[1], neighbor[0], neighbor[1])
+
+            if tentative_g_score < g_score.get(neighbor, float('inf')):
+                # This is a better path, update it
                 came_from[neighbor] = current
                 g_score[neighbor] = tentative_g_score
                 f_score[neighbor] = tentative_g_score + haversine(neighbor[0], neighbor[1], goal[0], goal[1])
-                heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-    return None
+                # Add neighbor to open set if not already present
+                if neighbor not in [n for _, n in open_set]:
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
-# Create a graph from junctions
-def create_graph(junctions):
+    return None  # No path found
+
+# Create a graph from hotspots and police station
+def create_graph(hotspots, police_station_lat, police_station_long):
     graph = {}
-    for i, row in junctions.iterrows():
-        graph[(row["Lat"], row["Long"])] = []
-        for j, neighbor in junctions.iterrows():
-            if i != j:
-                graph[(row["Lat"], row["Long"])].append((neighbor["Lat"], neighbor["Long"]))
+    hotspots_list = [(row["Lat"], row["Long"]) for _, row in hotspots.iterrows()]
+    all_nodes = [(police_station_lat, police_station_long)] + hotspots_list
+
+    # Fully connect the graph
+    for node in all_nodes:
+        graph[node] = [n for n in all_nodes if n != node]  # Connect each node to all others except itself
+
     return graph
 
-# Function to generate the optimized patrol route map
 def generate_patrol_route_map(police_station_lat, police_station_long, start_time, end_time):
-    global optimized_route  # Use the global variable
+    global optimized_route
+    try:
+        # Convert start_time and end_time to datetime objects
+        from datetime import datetime
+        start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+        end_time = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
 
-    # Filter crime data for the given time duration
-    filtered_crimes = crime_data[
-        (crime_data["occurrencedate"] >= start_time) & (crime_data["occurrencedate"] <= end_time)
-    ]
+        # Extract month and time slots
+        crime_data["occurrencedate"] = pd.to_datetime(crime_data["occurrencedate"])
+        crime_data["month"] = crime_data["occurrencedate"].dt.month
+        crime_data["hour"] = crime_data["occurrencedate"].dt.hour
 
-    # Get top crime hotspots (e.g., top 5 locations with most crimes)
-    hotspots = filtered_crimes.groupby(["Lat", "Long"]).size().nlargest(5).reset_index()
+        # Filter crimes for the same month and time slots
+        filtered_crimes = crime_data[
+            (crime_data["month"] == start_time.month) &
+            (crime_data["hour"] >= start_time.hour) &
+            (crime_data["hour"] <= end_time.hour)
+        ]
+        print(f"Filtered crimes count: {len(filtered_crimes)}")  # Debug print
 
-    # Create a base map centered around the police station
-    crime_map = folium.Map(location=[police_station_lat, police_station_long], zoom_start=13)
+        if len(filtered_crimes) == 0:
+            raise ValueError("No crimes found for the given month and time slots.")
 
-    # Add Marker Clustering
-    marker_cluster = MarkerCluster().add_to(crime_map)
+        # Group by location and calculate average crime counts
+        crime_avg = filtered_crimes.groupby(["Lat", "Long"]).size().reset_index(name="crime_count")
+        crime_avg["crime_count"] = crime_avg["crime_count"] / len(filtered_crimes["occurrencedate"].dt.day.unique())
+        print(f"Average crime counts: {crime_avg}")  # Debug print
 
-    # Add junctions to the map
-    for _, row in junctions_data.iterrows():
+        # Filter hotspots within a 5 km radius of the police station
+        police_station = (police_station_lat, police_station_long)
+        crime_avg["distance"] = crime_avg.apply(
+            lambda row: haversine(police_station[0], police_station[1], row["Lat"], row["Long"]),
+            axis=1
+        )
+        hotspots = crime_avg[crime_avg["distance"] <= 5]  # Filter within 5 km radius
+        print(f"Hotspots within 5 km: {len(hotspots)}")  # Debug print
+
+        if len(hotspots) == 0:
+            raise ValueError("No hotspots found within 5 km of the police station.")
+
+        # Find the nearest junction to the police station
+        junctions_data["distance"] = junctions_data.apply(
+            lambda row: haversine(police_station[0], police_station[1], row["Lat"], row["Long"]),
+            axis=1
+        )
+        nearest_junction = junctions_data.loc[junctions_data["distance"].idxmin()]
+        print(f"Nearest junction: {nearest_junction}")  # Debug print
+
+        # Create a base map centered around the police station
+        crime_map = folium.Map(location=[police_station_lat, police_station_long], zoom_start=13)
+        marker_cluster = MarkerCluster().add_to(crime_map)
+
+        # Add police station to the map
         folium.Marker(
-            location=[row["Lat"], row["Long"]],
-            popup=f"Junction {row['Junction_ID']}",
-            icon=folium.Icon(color="blue", icon="info-sign")
-        ).add_to(marker_cluster)
-
-    # Create graph from junctions
-    graph = create_graph(junctions_data)
-
-    # Calculate optimized route using A* algorithm
-    start = (police_station_lat, police_station_long)
-    goal = (hotspots.iloc[0]["Lat"], hotspots.iloc[0]["Long"])  # First hotspot as goal
-    optimized_route = a_star(start, goal, graph)
-
-    # Add optimized route to the map
-    if optimized_route:
-        folium.PolyLine(
-            locations=optimized_route,
-            color="red",
-            weight=5,
-            opacity=0.7,
-            popup="Optimized Patrol Route"
+            location=[police_station_lat, police_station_long],
+            popup="Police Station",
+            icon=folium.Icon(color="green", icon="home")
         ).add_to(crime_map)
 
-    # Save the map
-    crime_map.save("optimized_patrol_route.html")
-    print("Optimized patrol route map generated! Open 'optimized_patrol_route.html' in your browser.")
+        # Add nearest junction to the map
+        folium.Marker(
+            location=[nearest_junction["Lat"], nearest_junction["Long"]],
+            popup=f"Nearest Junction {nearest_junction['Junction_ID']}",
+            icon=folium.Icon(color="blue", icon="info-sign")
+        ).add_to(crime_map)
 
+        # Add hotspots to the map
+        for _, row in hotspots.iterrows():
+            folium.CircleMarker(
+                location=[row["Lat"], row["Long"]],
+                radius=5,
+                color="red",
+                fill=True,
+                fill_color="red",
+                fill_opacity=0.7,
+                popup=f"Hotspot: {row['crime_count']:.2f} crimes/day"
+            ).add_to(crime_map)
+
+        # Create a list of all nodes (nearest junction + hotspots)
+        all_nodes = [(nearest_junction["Lat"], nearest_junction["Long"])] + [
+            (row["Lat"], row["Long"]) for _, row in hotspots.iterrows()
+        ]
+
+        # Create a fully connected graph
+        graph = {}
+        for node in all_nodes:
+            graph[node] = [n for n in all_nodes if n != node]  # Connect each node to all others except itself
+
+        # Solve the Traveling Salesman Problem (TSP) to find the optimal route
+        from itertools import permutations
+
+        def calculate_total_distance(path):
+            total_distance = 0
+            for i in range(len(path) - 1):
+                total_distance += haversine(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1])
+            return total_distance
+
+        # Generate all possible paths (excluding the starting point)
+        hotspots_nodes = all_nodes[1:]  # Exclude the nearest junction
+        shortest_path = None
+        shortest_distance = float('inf')
+
+        # Use permutations to find the shortest path (brute-force TSP)
+        for path in permutations(hotspots_nodes):
+            path = [all_nodes[0]] + list(path)  # Start and end at the nearest junction
+            distance = calculate_total_distance(path)
+            if distance < shortest_distance:
+                shortest_distance = distance
+                shortest_path = path
+
+        # Add optimized route to the map
+        if shortest_path:
+            folium.PolyLine(
+                locations=shortest_path,
+                color="red",
+                weight=5,
+                opacity=0.7,
+                popup="Optimized Patrol Route"
+            ).add_to(crime_map)
+
+        # Save the map
+        crime_map.save("optimized_patrol_route.html")
+        print("Optimized patrol route map generated! Opening in browser...")
+
+        # Automatically open the map in the default browser
+        webbrowser.open("optimized_patrol_route.html")
+    except Exception as ex:
+        print(f"Error in generate_patrol_route_map: {ex}")  # Debug print
+        raise ex
+    
 # Main app
 def main(page: ft.Page):
     page.title = "Login - Police Patrol Optimization"
@@ -215,7 +310,7 @@ def main(page: ft.Page):
                     start_time.value,
                     end_time.value
                 )
-                optimized_route_output.value = "Optimized route map generated! Click 'Show Optimized Route on Map' to view."
+                optimized_route_output.value = "Optimized route map generated!"
                 show_map_button.current.visible = True
             except Exception as ex:
                 optimized_route_output.value = f"Error: {str(ex)}"
